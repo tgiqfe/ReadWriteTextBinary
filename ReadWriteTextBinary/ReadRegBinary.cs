@@ -3,56 +3,48 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Win32;
 using System.IO;
 using System.IO.Compression;
 
 namespace ReadWriteTextBinary
 {
-    internal class ReadTextBinary
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    internal class ReadRegBinary
     {
         const int BUFF_SIZE = 256;
 
         const int TextBlock = 80;
 
-        public static string Process(string filePath, bool compress)
+        public static string Process(string key, string name, bool compress)
         {
             string retText = "";
-
-            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read))
-            using (var br = new BinaryReader(fs))
-            using (var ms = new MemoryStream())
+            using (RegistryKey regKey = RegistryControl.GetRegistryKey(key, false, false))
             {
-                if (fs.Length < int.MaxValue)
+                var valueKind = regKey.GetValueKind(name);
+                if (valueKind == RegistryValueKind.Binary)
                 {
-                    byte[] buffer = new byte[BUFF_SIZE];
-                    int readed = 0;
-
                     if (compress)
                     {
-                        //  圧縮する場合
-                        using (var gs = new GZipStream(ms, CompressionMode.Compress))
-                        {        
-                            while ((readed = br.Read(buffer, 0, BUFF_SIZE)) > 0)
+                        using (var msS = new MemoryStream(regKey.GetValue(name) as byte[]))
+                        using (var msD = new MemoryStream())
+                        {
+                            using (var gs = new GZipStream(msD, CompressionMode.Compress))
                             {
-                                gs.Write(buffer, 0, readed);
+                                byte[] buffer = new byte[BUFF_SIZE];
+                                int readed = 0;
+                                while ((readed = msS.Read(buffer, 0, BUFF_SIZE)) > 0)
+                                {
+                                    gs.Write(buffer, 0, readed);
+                                }
                             }
+                            retText = BitConverter.ToString(msD.ToArray()).Replace("-", "");
                         }
                     }
                     else
                     {
-                        //  非圧縮
-                        while ((readed = br.Read(buffer, 0, buffer.Length)) > 0)
-                        {
-                            ms.Write(buffer, 0, readed);
-                        }
+                        retText = BitConverter.ToString(regKey.GetValue(name) as byte[]).Replace("-", "").ToUpper();
                     }
-
-                    retText =  BitConverter.ToString(ms.ToArray()).Replace("-", "");
-                }
-                else
-                {
-                    Console.Error.WriteLine("Size Over.");
-                    return null;
                 }
             }
 
